@@ -36,22 +36,31 @@ class BatchWaypointRunner:
                     timeout: int, suboptimality: float = 1.2) -> Dict:
         """Run a single scenario and return results."""
         
+        print(f"DEBUG: Starting scenario: {map_name} - {scenario_name} - {scenario_file}")
+        
         # Construct file paths for new structure
         map_file = f"data/maps/{map_name}.map"
         scenario_file_path = f"data/scenarios/{map_name}/{map_name}_{scenario_name}/{map_name}-{scenario_file}.scen"
         
+        print(f"DEBUG: Map file: {map_file}")
+        print(f"DEBUG: Scenario file: {scenario_file_path}")
+        
         # Check if files exist
         if not os.path.exists(map_file):
+            print(f"ERROR: Map file not found: {map_file}")
             return {
                 'success': False,
                 'error': f"Map file not found: {map_file}"
             }
         
         if not os.path.exists(scenario_file_path):
+            print(f"ERROR: Scenario file not found: {scenario_file_path}")
             return {
                 'success': False,
                 'error': f"Scenario file not found: {scenario_file_path}"
             }
+        
+        print(f"DEBUG: Both files exist, proceeding...")
         
         # Create output directory for this run
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -63,7 +72,9 @@ class BatchWaypointRunner:
         # Run the scenario
         start_time = time.time()
         try:
+            print(f"DEBUG: Creating WaypointEECBSRunner...")
             runner = WaypointEECBSRunner()
+            print(f"DEBUG: Calling run_waypoint_scenario...")
             result = runner.run_waypoint_scenario(
                 map_file=map_file,
                 scenario_file=scenario_file_path,

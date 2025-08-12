@@ -60,14 +60,16 @@ class WaypointScenarioParser:
                 optimal_length = float(parts[8])
                 num_waypoints = int(parts[9])  # This is number of waypoints, not agents
                 
-                # Extract waypoints (space-separated coordinates in the last field)
+                # Extract waypoints (tab-separated coordinates starting from index 10)
                 waypoints = []
                 if len(parts) > 10:
-                    waypoint_coords = parts[10].split()  # Split by spaces
-                    for i in range(0, len(waypoint_coords) - 1, 2):
-                        if i + 1 < len(waypoint_coords):
-                            wp_x = int(waypoint_coords[i])
-                            wp_y = int(waypoint_coords[i + 1])
+                    # Waypoint coordinates start at index 10 and are tab-separated
+                    # Each waypoint has 2 coordinates (x, y)
+                    for i in range(num_waypoints):
+                        wp_idx = 10 + (i * 2)
+                        if wp_idx + 1 < len(parts):
+                            wp_x = int(parts[wp_idx])
+                            wp_y = int(parts[wp_idx + 1])
                             waypoints.append((wp_x, wp_y))
                 
                 # The goal is already given in columns 6-7, not the last waypoint
@@ -248,6 +250,31 @@ class WaypointEECBSRunner:
                              scenario_index: int = 0, num_agents: int = 1,
                              timeout: int = 60, suboptimality: float = 1.2,
                              output_dir: str = None) -> Dict:
+        """Run EECBS for a complete waypoint scenario with timeout protection."""
+        
+        import signal
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError(f"Waypoint scenario timed out after {timeout} seconds")
+        
+        # Set up timeout handler
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(timeout + 10)  # Add 10 seconds buffer
+        
+        try:
+            return self._run_waypoint_scenario_internal(
+                map_file, scenario_file, scenario_index, num_agents, 
+                timeout, suboptimality, output_dir
+            )
+        finally:
+            # Restore signal handler and cancel alarm
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+    
+    def _run_waypoint_scenario_internal(self, map_file: str, scenario_file: str, 
+                                       scenario_index: int = 0, num_agents: int = 1,
+                                       timeout: int = 60, suboptimality: float = 1.2,
+                                       output_dir: str = None) -> Dict:
         """Run EECBS for a complete waypoint scenario."""
         
         # Parse the scenario file
@@ -279,8 +306,12 @@ class WaypointEECBSRunner:
         
         # Each agent's sequence: start -> wp1 -> ... -> wpN -> goal
         seqs = []
-        for agent in agents:
-            seqs.append([agent['start']] + agent['waypoints'] + [agent['goal']])
+        for i, agent in enumerate(agents):
+            sequence = [agent['start']] + agent['waypoints'] + [agent['goal']]
+            seqs.append(sequence)
+            print(f"  Agent {i} complete sequence: {' -> '.join([f'({x},{y})' for x, y in sequence])}")
+        
+        print(f"\nTotal waypoint sequence length: {[len(seq) - 1 for seq in seqs]} segments per agent")
         
         num_segments = max(len(seq) - 1 for seq in seqs)
         map_name = agents[0]['map_name']
@@ -293,21 +324,30 @@ class WaypointEECBSRunner:
         segment_results = []
         
         for seg in range(num_segments):
-            print(f"\nSegment {seg+1}:")
+            print(f"\n{'='*50}")
+            print(f"SEGMENT {seg+1} of {num_segments}")
+            print(f"{'='*50}")
             
             # For this segment, gather each agent's (start, end)
             agent_pairs = []
-            for seq in seqs:
+            for agent_idx, seq in enumerate(seqs):
                 if seg < len(seq) - 1:
                     start_point = seq[seg]
                     end_point = seq[seg + 1]
                     agent_pairs.append((start_point, end_point))
-                    print(f"  Agent {len(agent_pairs)-1}: {start_point} -> {end_point}")
+                    if seg == 0:
+                        print(f"  Agent {agent_idx}: START -> WP1: {start_point} -> {end_point}")
+                    elif seg == len(seq) - 2:
+                        print(f"  Agent {agent_idx}: WP{seg} -> GOAL: {start_point} -> {end_point}")
+                    else:
+                        print(f"  Agent {agent_idx}: WP{seg} -> WP{seg+1}: {start_point} -> {end_point}")
                 else:
                     # Agent already at its final goal; keep it stationary
                     final_pos = seq[-1]
                     agent_pairs.append((final_pos, final_pos))
-                    print(f"  Agent {len(agent_pairs)-1}: {final_pos} -> {final_pos} (stationary)")
+                    print(f"  Agent {agent_idx}: STATIONARY at GOAL: {final_pos} -> {final_pos}")
+            
+            print(f"\nCalling EECBS for segment {seg+1} with {len(agent_pairs)} agents...")
             
             # Create temporary scenario file for this segment with all agents
             temp_scenario = self._create_temp_scenario_multi(map_name, width, height, agent_pairs)
@@ -321,6 +361,7 @@ class WaypointEECBSRunner:
             self.temp_files.extend([temp_stats.name, temp_paths.name])
             
             # Run EECBS for this segment with all agents
+            print(f"DEBUG: Starting EECBS run for segment {seg+1}...")
             result = self._run_eecbs(
                 map_file=map_file,
                 scenario_file=temp_scenario,
@@ -330,6 +371,7 @@ class WaypointEECBSRunner:
                 output_stats=temp_stats.name,
                 output_paths=temp_paths.name
             )
+            print(f"DEBUG: EECBS run completed for segment {seg+1}")
             
             if not result['success']:
                 return {

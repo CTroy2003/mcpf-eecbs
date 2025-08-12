@@ -32,13 +32,13 @@ class BatchWaypointRunner:
         # Ensure output directory exists
         os.makedirs(base_output_dir, exist_ok=True)
     
-    def run_scenario(self, map_name: str, scenario_name: str, num_agents: int, 
+    def run_scenario(self, map_name: str, scenario_name: str, scenario_file: str, num_agents: int, 
                     timeout: int, suboptimality: float = 1.2) -> Dict:
         """Run a single scenario and return results."""
         
         # Construct file paths for new structure
         map_file = f"data/maps/{map_name}.map"
-        scenario_file = f"data/scenarios/{map_name}/{map_name}_{scenario_name}/{map_name}-random-1.scen"
+        scenario_file_path = f"data/scenarios/{map_name}/{map_name}_{scenario_name}/{map_name}-{scenario_file}.scen"
         
         # Check if files exist
         if not os.path.exists(map_file):
@@ -47,17 +47,17 @@ class BatchWaypointRunner:
                 'error': f"Map file not found: {map_file}"
             }
         
-        if not os.path.exists(scenario_file):
+        if not os.path.exists(scenario_file_path):
             return {
                 'success': False,
-                'error': f"Scenario file not found: {scenario_file}"
+                'error': f"Scenario file not found: {scenario_file_path}"
             }
         
         # Create output directory for this run
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = f"{self.base_output_dir}/{map_name}_{scenario_name}_{num_agents}agents_{timestamp}"
+        output_dir = f"{self.base_output_dir}/{map_name}_{scenario_name}_{scenario_file}_{num_agents}agents_{timestamp}"
         
-        print(f"Running: {map_name} - {scenario_name} with {num_agents} agents")
+        print(f"Running: {map_name} - {scenario_name} - {scenario_file} with {num_agents} agents")
         print(f"Output: {output_dir}")
         
         # Run the scenario
@@ -66,7 +66,7 @@ class BatchWaypointRunner:
             runner = WaypointEECBSRunner()
             result = runner.run_waypoint_scenario(
                 map_file=map_file,
-                scenario_file=scenario_file,
+                scenario_file=scenario_file_path,
                 scenario_index=0,  # Use first scenario
                 num_agents=num_agents,
                 timeout=timeout,
@@ -99,13 +99,14 @@ class BatchWaypointRunner:
                 'timestamp': timestamp
             }
     
-    def run_batch(self, maps: List[str], scenarios: List[str], num_agents: int,
-                  timeout: int, suboptimality: float = 1.2) -> List[Dict]:
+    def run_batch(self, maps: List[str], scenarios: List[str], scenario_files: List[str], 
+                  num_agents: int, timeout: int, suboptimality: float = 1.2) -> List[Dict]:
         """Run multiple scenarios in batch."""
         
         print(f"Starting batch run:")
         print(f"  Maps: {maps}")
         print(f"  Scenarios: {scenarios}")
+        print(f"  Scenario Files: {scenario_files}")
         print(f"  Agents: {num_agents}")
         print(f"  Timeout: {timeout}s")
         print(f"  Suboptimality: {suboptimality}")
@@ -116,30 +117,32 @@ class BatchWaypointRunner:
         
         for map_name in maps:
             for scenario_name in scenarios:
-                result = self.run_scenario(
-                    map_name=map_name,
-                    scenario_name=scenario_name,
-                    num_agents=num_agents,
-                    timeout=timeout,
-                    suboptimality=suboptimality
-                )
-                
-                results.append(result)
-                
-                # Print result summary
-                if result['success']:
-                    print(f"✅ SUCCESS: {map_name} - {scenario_name}")
-                    if 'total_cost' in result:
-                        print(f"   Total Cost: {result['total_cost']}")
-                    if 'total_path_length' in result:
-                        print(f"   Path Length: {result['total_path_length']}")
-                    if 'run_time' in result:
-                        print(f"   Run Time: {result['run_time']:.2f}s")
-                else:
-                    print(f"❌ FAILED: {map_name} - {scenario_name}")
-                    print(f"   Error: {result.get('error', 'Unknown error')}")
-                
-                print()
+                for scenario_file in scenario_files:
+                    result = self.run_scenario(
+                        map_name=map_name,
+                        scenario_name=scenario_name,
+                        scenario_file=scenario_file,
+                        num_agents=num_agents,
+                        timeout=timeout,
+                        suboptimality=suboptimality
+                    )
+                    
+                    results.append(result)
+                    
+                    # Print result summary
+                    if result['success']:
+                        print(f"✅ SUCCESS: {map_name} - {scenario_name} - {scenario_file}")
+                        if 'total_cost' in result:
+                            print(f"   Total Cost: {result['total_cost']}")
+                        if 'total_path_length' in result:
+                            print(f"   Path Length: {result['total_path_length']}")
+                        if 'run_time' in result:
+                            print(f"   Run Time: {result['run_time']:.2f}s")
+                    else:
+                        print(f"❌ FAILED: {map_name} - {scenario_name} - {scenario_file}")
+                        print(f"   Error: {result.get('error', 'Unknown error')}")
+                    
+                    print()
         
         # Save batch results
         self.save_batch_results(results)
@@ -236,9 +239,9 @@ def create_waypoint_scenarios(base_scenario_file: str, map_name: str,
 
 def main():
     parser = argparse.ArgumentParser(description="Batch Waypoint EECBS Runner")
-    parser.add_argument("--maps", nargs="+", default=["random-32-32-20"],
+    parser.add_argument("--maps", nargs="+", default=["random-32-32-20", "random-64-64-20", "warehouse-20-40-10-2-1", "brc202d"],
                        help="List of map names to run")
-    parser.add_argument("--scenarios", nargs="+", default=["2wp", "4wp", "8wp"],
+    parser.add_argument("--scenarios", nargs="+", default=["0wp", "1wp", "2wp", "4wp", "8wp"],
                        help="List of scenario names to run")
     parser.add_argument("--agents", type=int, default=250,
                        help="Number of agents to use")
@@ -252,6 +255,8 @@ def main():
                        help="Create waypoint scenarios from base scenarios")
     parser.add_argument("--base-scenario", default="random-32-32-20-random-1.scen",
                        help="Base scenario file for creating waypoint scenarios")
+    parser.add_argument("--scenario-files", nargs="+", default=["random-1"],
+                       help="List of scenario file numbers to run (e.g., random-1, random-2, etc.)")
     
     args = parser.parse_args()
     
@@ -271,6 +276,7 @@ def main():
     results = runner.run_batch(
         maps=args.maps,
         scenarios=args.scenarios,
+        scenario_files=args.scenario_files,
         num_agents=args.agents,
         timeout=args.timeout,
         suboptimality=args.suboptimality

@@ -122,7 +122,7 @@ class WaypointEECBSRunner:
         Create a temporary scenario file for multiple agents in a single segment.
         
         Args:
-            map_name: Name of the map file
+            map_name: Name of the map file (e.g., "random-32-32-20.map")
             width: Map width
             height: Map height  
             agent_pairs: List of ((start_x, start_y), (goal_x, goal_y)) for ALL agents in this segment

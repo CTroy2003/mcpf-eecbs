@@ -36,9 +36,9 @@ class BatchWaypointRunner:
                     timeout: int, suboptimality: float = 1.2) -> Dict:
         """Run a single scenario and return results."""
         
-        # Construct file paths
+        # Construct file paths for new structure
         map_file = f"data/maps/{map_name}.map"
-        scenario_file = f"data/scenarios/{map_name}/{map_name}-{scenario_name}.scen"
+        scenario_file = f"data/scenarios/{map_name}/{map_name}_{scenario_name}/{map_name}-random-1.scen"
         
         # Check if files exist
         if not os.path.exists(map_file):
@@ -184,7 +184,9 @@ def create_waypoint_scenarios(base_scenario_file: str, map_name: str,
     os.makedirs(scenarios_dir, exist_ok=True)
     
     for wp_count in waypoint_counts:
-        scenario_file = f"{scenarios_dir}/{map_name}-{wp_count}wp.scen"
+        scenario_dir = f"{scenarios_dir}/{map_name}_{wp_count}wp"
+        os.makedirs(scenario_dir, exist_ok=True)
+        scenario_file = f"{scenario_dir}/{map_name}-random-1.scen"
         
         print(f"  Creating {wp_count}wp scenario...")
         
